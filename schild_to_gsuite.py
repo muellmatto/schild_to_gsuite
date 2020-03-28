@@ -8,6 +8,7 @@ from csv import (
         )
 from os.path import isfile
 from sys import exit
+import unicodedata
 
 
 parser = ArgumentParser(description = "takes a SCHILD-file and outputs a csv_file for gsuite")
@@ -41,7 +42,7 @@ def users_from_schild(schild_file) -> list:
         users = list(reader)
     # Check if Schildfile is sufficient
     if args.teachers:
-        requirend_keys = ["Vorname", "Nachname", "Interne ID-Nummer", "E-Mail"]
+        requirend_keys = ["Vorname", "Nachname", "E-Mail (Dienstlich)", "eindeutige Nummer (GUID)"]
     else:
         requirend_keys = ["Vorname", "Nachname", "Klasse", "Interne ID-Nummer"]
     test_user = users[0]
@@ -49,26 +50,61 @@ def users_from_schild(schild_file) -> list:
         print("These Keys are needed: {}".format(requirend_keys))
         exit(1)
 
+    # filter test-users, etc.
+    def _is_testuser(user):
+        return all(
+                [
+                    user["Vorname"] != '',
+                    user["Nachname"] != ''
+                ]
+            )
+
+    users = [user for user in filter(_is_testuser, users)]
     return users
 
+## begin tryouts
+def sanitize_username(name):
+    REPLACE_MAP = {
+            " ": "-",
+            "ß": "ss",
+            "ä": "ae",
+            "ö": "oe",
+            "ü": "ue",
+            "æ": ""
+        }
+    TARGET_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789._-"
+    username = ''
+    def _char_translate(c):
+        base = unicodedata.decomposition(c).split(" ")[0].strip('0')
+        return bytes.fromhex(base).decode("utf-8")
+    for c in name.lower():
+        if c in TARGET_CHARS:
+            username += c
+        elif c in REPLACE_MAP:
+            username += REPLACE_MAP[c]
+        else:
+            username += _char_translate(c)
+    return username
+    # unused ....
+    def _string_translate(s):
+        return unicodedata.normalize('NFKD', s).encode('ascii','ignore')
 
 def generate_mail_address(person, add_middle_name):
     '''
         take First name and surname, replaces/strips non-ascii characters
-        and white spaces and returns a mailadress.
+        and white spaces and returns a mailaddress.
     '''
     if args.teachers:
         length = 1
     else:
         length = len(person["Vorname"])
-    #TODO:
-    # - user unicodedata eg to sanitize names!
-    # - avoid name clashes!
-    return "{}.{}@{}".format(
-            person["Vorname"][0:length],
-                person["Nachname"],
+    raw_username = ".".join([person["Vorname"], person["Nachname"]])
+    username = sanitize_username(raw_username) 
+    mail_address = "{}@{}".format(
+                username,
                 args.domain
-            )
+            ).lower()
+    return mail_address
 
 
 def user_to_gsuite(user, add_middle_name=False):
@@ -79,7 +115,9 @@ def user_to_gsuite(user, add_middle_name=False):
     if args.teachers:
         org_unit_path = "/Lehrer"
         employee_type = "Lehrer"
-        recovery_email = user["E-Mail"]
+        recovery_email = user["E-Mail (Dienstlich)"]
+        # strip '{' and '}'
+        user["Interne ID-Nummer"] = user["eindeutige Nummer (GUID)"][1:-1]
     else:
         klasse = user["Klasse"]
         if klasse in ["EF", "Q1", "Q2"]:
@@ -123,29 +161,63 @@ def get_duplicate_mailadresses(users):
             duplicates.append(tmp_list)
     return duplicates
 
-def write_gsuite_file(users):
-    pass
+
+def fix_duplicates(gsuite_users, duplicates):
+    for duplicate in duplicates:
+        print("\nCONFLICTS FOUND!!")
+        for num, d in enumerate(duplicate, start=1):
+            print("{} - {}\t{}\t{}\t{}".format(
+                    d["Employee ID"],
+                    d["First Name [Required]"],
+                    d["Last Name [Required]"],
+                    d["Email Address [Required]"],
+                    d["Org Unit Path [Required]"]
+                ))
+        print("... solving ...")
+        for num, d in enumerate(duplicate, start=1):
+            index = gsuite_users.index(d)
+            mail = d["Email Address [Required]"]
+            username, domain = mail.split('@')
+            username += str(num)
+            mail = '@'.join([username, domain])
+            gsuite_users[index]["Email Address [Required]"] = mail
+            # check
+            user = gsuite_users[index]
+            print("{} - {}\t{}\t{}\t{}".format(
+                    user["Employee ID"],
+                    user["First Name [Required]"],
+                    user["Last Name [Required]"],
+                    user["Email Address [Required]"],
+                    user["Org Unit Path [Required]"]
+                ))
+        print('\n')
+
+    return gsuite_users
+
+def write_gsuite_file(users, gsuite_file):
+    '''
+        write a gsuite csv file.
+    '''
+    # get csv-filednames from first user
+    fieldnames = list(users[0].keys())
+    with open(gsuite_file, "w") as f:
+        writer = DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(users)
+
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
     check_input_output(args)
-    gsuite_list = [
+    gsuite_users = [
                 user_to_gsuite(user)
                 for user in users_from_schild(args.input)
             ]
-    duplicates = get_duplicate_mailadresses(gsuite_list)
+    duplicates = get_duplicate_mailadresses(gsuite_users)
     if len(duplicates) > 0:
-        print("CONFLICTS FOUND!!\n")
-        for duplicate in duplicates:
-            for d in duplicate:
-                print("{} - {}\t{}\t{}\t{}".format(
-                        d["Employee ID"],
-                        d["First Name [Required]"],
-                        d["Last Name [Required]"],
-                        d["Email Address [Required]"],
-                        d["Org Unit Path [Required]"]
-                    ))
-            print('\n')
-        print("ABORT")
-        exit(1)
+        # fix duplicates
+        gsuite_users = fix_duplicates(gsuite_users=gsuite_users, duplicates=duplicates)
+
+    write_gsuite_file(gsuite_users, args.output)
 
