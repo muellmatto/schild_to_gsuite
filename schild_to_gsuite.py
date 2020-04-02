@@ -104,7 +104,7 @@ def generate_mail_address(person):
         length = 1
     else:
         length = len(person["Vorname"])
-    raw_username = ".".join([person["Vorname"], person["Nachname"]])
+    raw_username = ".".join([person["Vorname"][0:length], person["Nachname"]])
     username = sanitize_username(raw_username) 
     mail_address = "{}@{}".format(
                 username,
@@ -118,15 +118,22 @@ def user_to_gsuite(user):
         converts a Schild-dict to a gsuite-dict.
     '''
     mail_address = generate_mail_address(user)
+    def is_mail(mail):
+        regex = re.compile("[^@]+@[^@]+\.[^@]+")
+        return regex.match(mail)
+
     if args.teachers:
         org_unit_path = "/Lehrer"
         employee_type = "Lehrer"
-        recovery_email = user["E-Mail (Dienstlich)"]
+        if is_mail(user["E-Mail (Dienstlich)"]):
+            recovery_email = user["E-Mail (Dienstlich)"]
+        else:
+            recovery_email = ""
         # strip '{' and '}'
-        user["Interne ID-Nummer"] = user["eindeutige Nummer (GUID)"][1:-1]
+        user["Interne ID-Nummer"] = ''
         change_pw = True
         if args.xkcd_password:
-            password = generate_password()
+            password = generate_password(length=2)
         else:
             password = args.password
     else:
@@ -139,7 +146,7 @@ def user_to_gsuite(user):
         employee_type = "Schüler"
         recovery_email = "" 
         if args.xkcd_password:
-            password = generate_password(length=1)
+            password = generate_password(length=2)
             change_pw = False
         else:
             password = args.password
@@ -216,9 +223,38 @@ def write_gsuite_file(users, gsuite_file):
         write a gsuite csv file.
     '''
     # get csv-filednames from first user
-    fieldnames = list(users[0].keys())
+    fieldnames = [
+        "First Name [Required]",
+        "Last Name [Required]",
+        "Email Address [Required]",
+        "Password [Required]",
+        "Password Hash Function [UPLOAD ONLY]",
+        "Org Unit Path [Required]",
+        "New Primary Email [UPLOAD ONLY]",
+        "Recovery Email",
+        "Home Secondary Email",
+        "Work Secondary Email",
+        "Recovery Phone [MUST BE IN THE E.164 FORMAT]",
+        "Work Phone",
+        "Home Phone",
+        "Mobile Phone",
+        "Work Address",
+        "Home Address",
+        "Employee ID",
+        "Employee Type",
+        "Employee Title",
+        "Manager Email",
+        "Department",
+        "Cost Center",
+        "Building ID",
+        "Floor Name",
+        "Floor Section",
+        "Change Password at Next Sign-In",
+        "New Status [UPLOAD ONLY]"
+        ]
+
     with open(gsuite_file, "w") as f:
-        writer = DictWriter(f, fieldnames=fieldnames)
+        writer = DictWriter(f, fieldnames=fieldnames, restval="")
         writer.writeheader()
         writer.writerows(users)
 
