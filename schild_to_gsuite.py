@@ -7,15 +7,21 @@ from csv import (
         DictWriter
         )
 from os.path import isfile
+from random import sample
 from sys import exit
 import unicodedata
 
+from wordlist import wordlist
 
 parser = ArgumentParser(description = "takes a SCHILD-file and outputs a csv_file for gsuite")
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument('-t', '--teachers', action="store_true", help="users are added as teachers")
 group.add_argument('-s', '--students', action="store_true", help="users are added as students")
-parser.add_argument('-p', '--password', required=True, help="Temporary, first password")
+
+pass_group = parser.add_mutually_exclusive_group(required=True)
+pass_group.add_argument('-p', '--password', help="Temporary, first password")
+pass_group.add_argument('-x', '--xkcd-password', action="store_true", help="generate an xkcd-style password")
+
 parser.add_argument('-d', '--domain', required=True, help="Domain, eg. edu.school.tld")
 parser.add_argument('-i', '--input', required=True, help="SCHILD Text (csv) file")
 parser.add_argument('-o', '--output', required=True, help="gsuite filename")
@@ -89,7 +95,7 @@ def sanitize_username(name):
     def _string_translate(s):
         return unicodedata.normalize('NFKD', s).encode('ascii','ignore')
 
-def generate_mail_address(person, add_middle_name):
+def generate_mail_address(person):
     '''
         take First name and surname, replaces/strips non-ascii characters
         and white spaces and returns a mailaddress.
@@ -107,17 +113,22 @@ def generate_mail_address(person, add_middle_name):
     return mail_address
 
 
-def user_to_gsuite(user, add_middle_name=False):
+def user_to_gsuite(user):
     '''
         converts a Schild-dict to a gsuite-dict.
     '''
-    mail_address = generate_mail_address(user, add_middle_name)
+    mail_address = generate_mail_address(user)
     if args.teachers:
         org_unit_path = "/Lehrer"
         employee_type = "Lehrer"
         recovery_email = user["E-Mail (Dienstlich)"]
         # strip '{' and '}'
         user["Interne ID-Nummer"] = user["eindeutige Nummer (GUID)"][1:-1]
+        change_pw = True
+        if args.xkcd_password:
+            password = generate_password()
+        else:
+            password = args.password
     else:
         klasse = user["Klasse"]
         if klasse in ["EF", "Q1", "Q2"]:
@@ -127,15 +138,21 @@ def user_to_gsuite(user, add_middle_name=False):
         org_unit_path = f"/Schüler/{jg}/{klasse}"
         employee_type = "Schüler"
         recovery_email = "" 
+        if args.xkcd_password:
+            password = generate_password(length=1)
+            change_pw = False
+        else:
+            password = args.password
+            change_pw = True
     return {
             "First Name [Required]": user["Vorname"],
             "Last Name [Required]": user["Nachname"],
             "Email Address [Required]": mail_address,
-            "Password [Required]": args.password,
+            "Password [Required]": password,
             "Org Unit Path [Required]": org_unit_path,
             "Employee ID": user["Interne ID-Nummer"],
             "Employee Type": employee_type,
-            "Change Password at Next Sign-In": "true",
+            "Change Password at Next Sign-In": change_pw,
             "Recovery Email": recovery_email
             }
 
@@ -205,6 +222,39 @@ def write_gsuite_file(users, gsuite_file):
         writer.writeheader()
         writer.writerows(users)
 
+def generate_password(length=2):
+    words = sample(wordlist, length)
+    return " ".join(words)
+
+def write_password_files(users):
+    def _write_file(filename, users):
+        with open(filename, "w") as f:
+            writer = DictWriter(f, ["user", "password"])
+            writer.writeheader()
+            writer.writerows(
+                        [
+                            {
+                                "user": user["Email Address [Required]"],
+                                "password": user["Password [Required]"]
+                            }
+                            for user in users
+                        ]
+                    )
+
+    if args.teachers:
+        filename = "Passwords_Teachers.txt"
+        _write_file(filename, users)
+    else:
+        classes = set([user["Org Unit Path [Required]"] for user in users]) 
+        for c in classes:
+            filename = 'passwords_{}.txt'.format(c.split('/')[-1])
+            _write_file(
+                    filename,
+                    filter(
+                        lambda x: x["Org Unit Path [Required]"] == c,
+                        users
+                    ) 
+                )
 
 
 if __name__ == "__main__":
@@ -220,4 +270,6 @@ if __name__ == "__main__":
         gsuite_users = fix_duplicates(gsuite_users=gsuite_users, duplicates=duplicates)
 
     write_gsuite_file(gsuite_users, args.output)
+    if args.xkcd_password:
+        write_password_files(gsuite_users)
 
