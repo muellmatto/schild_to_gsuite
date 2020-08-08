@@ -21,6 +21,7 @@ group.add_argument('-s', '--students', action="store_true", help="users are adde
 pass_group = parser.add_mutually_exclusive_group(required=True)
 pass_group.add_argument('-p', '--password', help="Temporary, first password")
 pass_group.add_argument('-x', '--xkcd-password', action="store_true", help="generate an xkcd-style password")
+pass_group.add_argument('-k', '--keep-password', action="store_true", help="keep the password (use only for existing users!)")
 
 parser.add_argument('-d', '--domain', required=True, help="Domain, eg. edu.school.tld")
 parser.add_argument('-i', '--input', required=True, help="SCHILD Text (csv) file")
@@ -134,6 +135,8 @@ def user_to_gsuite(user):
         change_pw = True
         if args.xkcd_password:
             password = generate_password(length=2)
+        elif args.keep_password:
+            password = "****"
         else:
             password = args.password
     else:
@@ -187,6 +190,7 @@ def get_duplicate_mailadresses(users):
 
 
 def fix_duplicates(gsuite_users, duplicates):
+    # TODO: Immer die gleiche Reihenfolge ... nichts überschreiben! Ahhhh
     for duplicate in duplicates:
         print("\nCONFLICTS FOUND!!")
         for num, d in enumerate(duplicate, start=1):
