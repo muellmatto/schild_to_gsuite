@@ -2,3 +2,7 @@
 *.txt
 *.csv
 *.CSV
+__pycache__
+*.spec
+build
+secret
