@@ -1,6 +1,7 @@
 from __future__ import print_function
 import pickle
 import os.path
+import unicodedata
 
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -179,7 +180,7 @@ class GsuiteUsers(object):
         request = service.users().insert(body=body)
         result = request.execute()
         self.users.append(User(result))
-        print(result)
+        # print(result)
         return User(result)
 
     def add_user(self, first_name, last_name, recoveryEmail=None, schild_id=None, password=None, teacher=False, schoolclass=None, changePasswordAtNextLogin=False):
@@ -201,6 +202,15 @@ class GsuiteUsers(object):
                 user['recoveryEmail'] = recoveryEmail
         else:
             length = len(first_name)
+            if type(schoolclass) == int:
+                schoolclass = str(schoolclass)
+            if not schoolclass.startswith('/'):
+                if len(schoolclass) < 3:
+                    schoolclass = "0" + schoolclass
+                schoolclass = "/Schüler/{}/{}".format(
+                    schoolclass[0:2],
+                    schoolclass
+                )
             user['orgUnitPath'] = schoolclass
             user['organizations'] = [{'primary': True, 'customType': '', 'description': 'Schüler'}]
             if schild_id:
@@ -216,13 +226,43 @@ class GsuiteUsers(object):
         user['primaryEmail'] = primaryEmail
         user['changePasswordAtNextLogin'] = changePasswordAtNextLogin
         if self.get_user_by_schild_id(schild_id):
-            print("already exists! UPDATE!")
+            print("already exists! UPDATE! (please reload users when done)")
             user['primaryEmail'] = self.get_user_by_schild_id(schild_id)['primaryEmail']
             return self.update_user(user), None
         if not password:
             password = generate_password()
         return self._insert_user(user, password), password
 
+    def add_schild_students(self, schild_users):
+        requirend_keys = ["Vorname", "Nachname", "Klasse", "Interne ID-Nummer"]
+        test_user = schild_users[0]
+        if not set(requirend_keys).issubset(set(test_user.keys())):
+            print("Err - These Keys are needed: {}".format(requirend_keys))
+            return None
+        for i, user in enumerate(schild_users):
+            with open(f"passwords_{user['Klasse']}.log", "a") as log:
+                if user['Klasse'] in ['EF', 'Q1', 'Q2']:
+                    schoolclass = f"/Schüler/Oberstufe/{user['Klasse']}"
+                else:
+                    schoolclass = f"/Schüler/{user['Klasse'][:2]}/{user['Klasse']}"
+                mail , pw = self.add_user(
+                    first_name=user['Vorname'],
+                    last_name=user['Nachname'],
+                    schild_id=user['Interne ID-Nummer'],
+                    teacher=False,
+                    schoolclass=schoolclass
+                )
+                # write only new users to file
+                if pw:
+                    log.write(f"{mail['primaryEmail']} - {pw} \n")
+                #if not pw:
+                #    pw = "****"
+                #log.write(f"{mail['primaryEmail']} - {pw} \n")
+                print(f"processing no. {i}")
+        self.users = self._get_users()
+
+    def update(self):
+        self.users = self._get_users()
 
     def update_user(self, user):
         service = build('admin', 'directory_v1', credentials=self.creds)
