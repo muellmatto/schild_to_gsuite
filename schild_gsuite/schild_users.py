@@ -35,7 +35,7 @@ class SchildUsers(object):
             requirend_keys = ["Vorname", "Nachname", "Klasse", "Interne ID-Nummer"]
         test_user = users[0]
         if not set(requirend_keys).issubset(set(test_user.keys())):
-            print("Err - These Keys are needed: {}".format(requirend_keys))
+            print("Err - These Keys are needed: {}\nmake sure to use ; as delimiter".format(requirend_keys))
             return None
 
         # filter test-users, etc.
@@ -48,4 +48,11 @@ class SchildUsers(object):
                 )
 
         self.users = [user for user in filter(_is_testuser, users)]
+
         return self.users
+
+    def find_users(self, string):
+        for i, user in enumerate(self.users):
+            if f"{user['Vorname']} {user['Nachname']}".casefold().find(string) >= 0:
+                yield i, user
+
