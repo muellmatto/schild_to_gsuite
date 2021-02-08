@@ -6,3 +6,5 @@ __pycache__
 *.spec
 build
 secret
+passwords_*
+tmp

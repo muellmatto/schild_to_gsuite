@@ -42,7 +42,7 @@ class User(dict):
         return output
 
 
-class GsuiteUsers(object):
+class WorkspaceUsers(object):
 
     def __init__(self, domain):
         self.domain = domain
