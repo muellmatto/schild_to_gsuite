@@ -41,6 +41,19 @@ class User(dict):
             output += " - " + self['externalIds'][0]['value']
         return output
 
+    @property
+    def schildId(self):
+        if 'externalIds' in self: 
+            return self['externalIds'][0]['value']
+        return None
+
+    @schildId.setter
+    def schildId(self, value):
+        if 'externalIds' in self: 
+            self['externalIds'][0]['value'] = str(value)
+        else:
+            self['externalIds'] = [{'value': str(value), 'type': 'organization'}]
+
 
 class WorkspaceUsers(object):
 
@@ -116,6 +129,13 @@ class WorkspaceUsers(object):
             if not 'externalIds' in user and user['orgUnitPath'].startswith("/Schüler"):
                 result.append(user)
         return result
+
+    def query(self, name='', schooll_class=''):
+        return [
+            user for user in self.users
+            if name.casefold() in user['name']['fullName'].casefold()
+            and schooll_class.casefold() in user['orgUnitPath']
+        ]
 
     def move_to_next_year(self, i_really_know_what_i_am_doing=False):
         if not i_really_know_what_i_am_doing:
@@ -270,6 +290,8 @@ class WorkspaceUsers(object):
             "orgUnitPath": user['orgUnitPath'],
             "name": user["name"]
         }
+        if 'externalIds' in user: 
+            body['externalIds'] = user['externalIds']
         request = service.users().update(userKey=user['primaryEmail'], body=body)
         result = request.execute()
         return User(result)
