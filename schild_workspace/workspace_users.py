@@ -54,6 +54,14 @@ class User(dict):
         else:
             self['externalIds'] = [{'value': str(value), 'type': 'organization'}]
 
+    def set_password(self, password):
+        self['password'] = password
+        return (self['primaryEmail'], password)
+
+    def generate_new_password(self):
+        new_password = generate_password()
+        return self.set_password(new_password)
+
 
 class WorkspaceUsers(object):
 
@@ -130,11 +138,11 @@ class WorkspaceUsers(object):
                 result.append(user)
         return result
 
-    def query(self, name='', schooll_class=''):
+    def query(self, name='', school_class=''):
         return [
             user for user in self.users
             if name.casefold() in user['name']['fullName'].casefold()
-            and schooll_class.casefold() in user['orgUnitPath']
+            and school_class.casefold() in user['orgUnitPath']
         ]
 
     def move_to_next_year(self, i_really_know_what_i_am_doing=False):
@@ -204,6 +212,20 @@ class WorkspaceUsers(object):
         return User(result)
 
     def add_user(self, first_name, last_name, recoveryEmail=None, schild_id=None, password=None, teacher=False, schoolclass=None, changePasswordAtNextLogin=False):
+        """
+            add_user(
+                first_name,
+                last_name,
+                recoveryEmail=None,
+                schild_id=None,
+                password=None,
+                teacher=False,
+                schoolclass=None,
+                changePasswordAtNextLogin=False
+            ):
+            
+            returns a tuple (User, password)
+        """
         if not teacher and not schoolclass:
             print("you need to proivide a schoolclass for students")
             return None
@@ -246,42 +268,88 @@ class WorkspaceUsers(object):
         user['primaryEmail'] = primaryEmail
         user['changePasswordAtNextLogin'] = changePasswordAtNextLogin
         if self.get_user_by_schild_id(schild_id):
-            print("already exists! UPDATE! (please reload users when done)")
+            print("already exists! UPDATE! (please reload users when done. Hint: .refresh() method)")
             user['primaryEmail'] = self.get_user_by_schild_id(schild_id)['primaryEmail']
             return self.update_user(user), None
         if not password:
             password = generate_password()
         return self._insert_user(user, password), password
 
-    def add_schild_students(self, schild_users):
+    def add_user_interactive(self):
+        print("is teacher? [n]/y\n > ", end="")
+        _input = input()
+        teacher = _input=="y"
+        print("first name?\n > ", end="")
+        first_name = input()
+        print("last name?\n > ", end="")
+        last_name = input()
+        if teacher:
+            print("recovery mail?\n > ", end="")
+            recoveryEmail = input()
+            self.add_user(
+                first_name=first_name,
+                last_name=last_name,
+                recoveryEmail=recoveryEmail,
+                teacher=True,
+                changePasswordAtNextLogin=True
+            )
+        else:
+            print("Schild ID?\n > ", end="")
+            schildId = input()
+            print("School class?\n > ", end="")
+            schoolclass = input()
+            self.add_user(
+                first_name=first_name,
+                last_name=last_name,
+                schild_id=schildId,
+                teacher=False,
+                schoolclass=schoolclass,
+                changePasswordAtNextLogin=False
+            )
+
+
+    def add_schild_students(self, schild_users, onboarding=False, write_existing_users_too=False):
         requirend_keys = ["Vorname", "Nachname", "Klasse", "Interne ID-Nummer"]
         test_user = schild_users[0]
         if not set(requirend_keys).issubset(set(test_user.keys())):
             print("Err - These Keys are needed: {}".format(requirend_keys))
             return None
+        amount_users = len(schild_users)
         for i, user in enumerate(schild_users):
-            with open(f"passwords_{user['Klasse']}.log", "a") as log:
+            base_org_unit = "/Schüler"
+            if onboarding:
+                base_org_unit += "/onboarding"
+            with open(f"passwords_{user['Klasse']}.csv", "a") as log:
                 if user['Klasse'] in ['EF', 'Q1', 'Q2']:
-                    schoolclass = f"/Schüler/Oberstufe/{user['Klasse']}"
+                    schoolclass = f"{base_org_unit}/Oberstufe/{user['Klasse']}"
+                elif user['Klasse'] == "IPD":
+                    schoolclass = f"{base_org_unit}/{user['Klasse']}"
                 else:
-                    schoolclass = f"/Schüler/{user['Klasse'][:2]}/{user['Klasse']}"
-                mail , pw = self.add_user(
+                    schoolclass = f"{base_org_unit}/{user['Klasse'][:2]}/{user['Klasse']}"
+                workspace_user, pw = self.add_user(
                     first_name=user['Vorname'],
                     last_name=user['Nachname'],
                     schild_id=user['Interne ID-Nummer'],
                     teacher=False,
                     schoolclass=schoolclass
                 )
-                # write only new users to file
+                # default: write only new users to file
+                if write_existing_users_too:
+                    if not pw: 
+                        pw = "****"
                 if pw:
-                    log.write(f"{mail['primaryEmail']} - {pw} \n")
-                #if not pw:
-                #    pw = "****"
-                #log.write(f"{mail['primaryEmail']} - {pw} \n")
-                print(f"processing no. {i}")
+                    log.write(
+                            "{};{};{};{}\n".format(
+                                workspace_user['name']['givenName'],
+                                workspace_user['name']['familyName'],
+                                workspace_user['primaryEmail'],
+                                pw
+                            )
+                    )
+                print(f"processing no. {i+1} / {amount_users} - {workspace_user['primaryEmail']}")
         self.users = self._get_users()
 
-    def update(self):
+    def refresh(self):
         self.users = self._get_users()
 
     def update_user(self, user):
