@@ -62,6 +62,9 @@ class User(dict):
         new_password = generate_password()
         return self.set_password(new_password)
 
+    def is_student(self):
+        return self['orgUnitPath'].startswith('/Schüler')
+
 
 class WorkspaceUsers(object):
 
@@ -286,7 +289,7 @@ class WorkspaceUsers(object):
         if teacher:
             print("recovery mail?\n > ", end="")
             recoveryEmail = input()
-            self.add_user(
+            return self.add_user(
                 first_name=first_name,
                 last_name=last_name,
                 recoveryEmail=recoveryEmail,
@@ -298,7 +301,7 @@ class WorkspaceUsers(object):
             schildId = input()
             print("School class?\n > ", end="")
             schoolclass = input()
-            self.add_user(
+            return self.add_user(
                 first_name=first_name,
                 last_name=last_name,
                 schild_id=schildId,
@@ -360,10 +363,25 @@ class WorkspaceUsers(object):
         }
         if 'externalIds' in user: 
             body['externalIds'] = user['externalIds']
+        if 'password' in user:
+            body['password'] = user['password']
         request = service.users().update(userKey=user['primaryEmail'], body=body)
         result = request.execute()
         return User(result)
 
+    def get_not_agreed_users(self):
+        not_agreed = [user for user in self.users if user['agreedToTerms'] == False]
+        return not_agreed
+
+    def get_former_students(self, schild_object):
+        former_users = []
+        active_schild_ids = [user.schildID for user in schild_object.users]
+        for user in self.users:
+            if user.is_student():
+                if not user.schildId in active_schild_ids:
+                    former_users.append(user)
+        return former_users
+        
 
 
 if __name__ == '__main__':

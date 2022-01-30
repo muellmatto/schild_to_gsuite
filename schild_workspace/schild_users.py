@@ -4,6 +4,14 @@ from csv import (
 from os.path import isfile
 
 
+class SchildUser(dict):
+    def __repr__(self):
+        return f"{self['Vorname']} {self['Nachname']} - {self['Klasse']} - {self['Interne ID-Nummer']}"
+    @property
+    def schildID(self):
+        return self['Interne ID-Nummer']
+
+
 class SchildUsers(object):
 
     def __init__(self, schild_file=None, teachers=False):
@@ -11,7 +19,7 @@ class SchildUsers(object):
         self.teachers = teachers
         self.schild_file = schild_file
         if schild_file:
-            self.schild_file = self._users_from_schild()
+            self.users = self._users_from_schild()
 
     def _users_from_schild(self) -> list:
         '''
@@ -47,9 +55,8 @@ class SchildUsers(object):
                     ]
                 )
 
-        self.users = [user for user in filter(_is_testuser, users)]
+        return [SchildUser(user) for user in filter(_is_testuser, users)]
 
-        return self.users
 
     def find_users(self, string):
         for i, user in enumerate(self.users):
