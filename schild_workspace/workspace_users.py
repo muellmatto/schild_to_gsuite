@@ -1,4 +1,5 @@
 from __future__ import print_function
+from collections import UserDict
 import pickle
 import os.path
 import unicodedata
@@ -33,7 +34,11 @@ def sanitize_username(name):
     return username
 
 
-class User(dict):
+class User(UserDict):
+
+    def __init__(self, dict, workspace=None):
+        super().__init__(dict)
+        self.workspace=workspace
 
     def __repr__(self):
         output = self['primaryEmail'] + " - " + self['orgUnitPath'] 
@@ -56,7 +61,8 @@ class User(dict):
 
     def set_password(self, password):
         self['password'] = password
-        return (self['primaryEmail'], password)
+        print (self['primaryEmail'], password)
+        return self.save()
 
     def generate_new_password(self):
         new_password = generate_password()
@@ -64,6 +70,14 @@ class User(dict):
 
     def is_student(self):
         return self['orgUnitPath'].startswith('/Schüler')
+
+    def save(self):
+        if isinstance(self.workspace, WorkspaceUsers):
+            print("saving ...")
+            return self.workspace.update_user(self)
+        else:
+            print("no workspace available...")
+            return False
 
 
 class WorkspaceUsers(object):
@@ -114,7 +128,7 @@ class WorkspaceUsers(object):
             users += result.get('users', [])
             request = service.users().list_next(request, result)
         # apply custom dicts for better console output
-        return [User(user) for user in users]
+        return [User(user, workspace=self) for user in users]
 
     def get_user_by_schild_id(self, schild_id):
         result = None
@@ -210,9 +224,9 @@ class WorkspaceUsers(object):
             body["externalIds"] = user['externalIds']
         request = service.users().insert(body=body)
         result = request.execute()
-        self.users.append(User(result))
+        self.users.append(User(result, workspace=self))
         # print(result)
-        return User(result)
+        return User(result, workspace=self)
 
     def add_user(self, first_name, last_name, recoveryEmail=None, schild_id=None, password=None, teacher=False, schoolclass=None, changePasswordAtNextLogin=False):
         """
@@ -233,7 +247,7 @@ class WorkspaceUsers(object):
             print("you need to proivide a schoolclass for students")
             return None
 
-        user = User()
+        user = User({}, workspace=self)
         user['name'] = {
             "givenName": first_name, # First Name
             "fullName": f"{first_name} {last_name}", # Full Name
@@ -367,7 +381,7 @@ class WorkspaceUsers(object):
             body['password'] = user['password']
         request = service.users().update(userKey=user['primaryEmail'], body=body)
         result = request.execute()
-        return User(result)
+        return User(result, workspace=self)
 
     def get_not_agreed_users(self):
         not_agreed = [user for user in self.users if user['agreedToTerms'] == False]
