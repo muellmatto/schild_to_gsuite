@@ -31,10 +31,9 @@ def sanitize_username(name):
 
 
 class User(UserDict):
-    def __init__(self, userdata, organization=None):
+    def __init__(self, userdata, workspace=None):
         super().__init__(userdata)
-        if organization:
-            self.organization = organization
+        self.workspace = workspace
 
     def __repr__(self):
         output = self["primaryEmail"] + " - " + self["orgUnitPath"]
@@ -57,9 +56,8 @@ class User(UserDict):
 
     def set_password(self, password):
         self["password"] = password
-        saved = self.save()
-        print(saved)
-        return (self["primaryEmail"], password)
+        print(self["primaryEmail"], password)
+        return self.save()
 
     def generate_new_password(self):
         new_password = generate_password()
@@ -74,6 +72,14 @@ class User(UserDict):
             return True
         else:
             print("FAILED: No organization set")
+            return False
+
+    def save(self):
+        if isinstance(self.workspace, WorkspaceUsers):
+            print("saving ...")
+            return self.workspace.update_user(self)
+        else:
+            print("no workspace available...")
             return False
 
 
@@ -119,7 +125,7 @@ class WorkspaceUsers(object):
             users += result.get("users", [])
             request = service.users().list_next(request, result)
         # apply custom dicts for better console output
-        return [User(user, organization=self) for user in users]
+        return [User(user, workspace=self) for user in users]
 
     def get_user_by_schild_id(self, schild_id):
         result = None
@@ -223,9 +229,9 @@ class WorkspaceUsers(object):
             body["externalIds"] = user["externalIds"]
         request = service.users().insert(body=body)
         result = request.execute()
-        self.users.append(User(result, organization=self))
+        self.users.append(User(result, workspace=self))
         # print(result)
-        return User(result, organization=self)
+        return User(result, workspace=self)
 
     def add_user(
         self,
@@ -256,7 +262,7 @@ class WorkspaceUsers(object):
             print("you need to proivide a schoolclass for students")
             return None
 
-        user = User({}, organization=self)
+        user = User({}, workspace=self)
         user["name"] = {
             "givenName": first_name,  # First Name
             "fullName": f"{first_name} {last_name}",  # Full Name
@@ -397,7 +403,7 @@ class WorkspaceUsers(object):
             body["password"] = user["password"]
         request = service.users().update(userKey=user["primaryEmail"], body=body)
         result = request.execute()
-        return User(result, organization=self)
+        return User(result, workspace=self)
 
     def get_not_agreed_users(self):
         not_agreed = [user for user in self.users if user["agreedToTerms"] == False]
