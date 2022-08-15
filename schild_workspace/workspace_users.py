@@ -70,7 +70,7 @@ class User(UserDict):
 
     def save(self):
         if self.organization:
-            self.organization.updated_user(self)
+            self.organization.update_user(self)
             return True
         else:
             print("FAILED: No organization set")
