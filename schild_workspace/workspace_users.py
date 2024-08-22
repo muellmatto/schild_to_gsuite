@@ -54,25 +54,19 @@ class User(UserDict):
         else:
             self["externalIds"] = [{"value": str(value), "type": "organization"}]
 
-    def set_password(self, password):
+    def set_password(self, password, prnt=True):
         self["password"] = password
-        print(self["primaryEmail"], password)
+        if prnt:
+            print(self["primaryEmail"], password)
         return self.save()
 
     def generate_new_password(self):
+        """takes no argument, stores the new password in the USER-DICTS and returns it"""
         new_password = generate_password()
         return self.set_password(new_password)
 
     def is_student(self):
         return self["orgUnitPath"].startswith("/Schüler")
-
-    def save(self):
-        if self.organization:
-            self.organization.update_user(self)
-            return True
-        else:
-            print("FAILED: No organization set")
-            return False
 
     def save(self):
         if isinstance(self.workspace, WorkspaceUsers):
@@ -394,9 +388,18 @@ class WorkspaceUsers(object):
     def refresh(self):
         self.users = self._get_users()
 
+    # TODO: handle suspended users
     def update_user(self, user):
         service = build("admin", "directory_v1", credentials=self.creds)
-        body = {"orgUnitPath": user["orgUnitPath"], "name": user["name"]}
+        if "suspended" in user:
+            body = {
+                "orgUnitPath": user["orgUnitPath"],
+                "name": user["name"],
+                "suspended": user["suspended"],
+            }
+        else:
+            body = {"orgUnitPath": user["orgUnitPath"], "name": user["name"]}
+
         if "externalIds" in user:
             body["externalIds"] = user["externalIds"]
         if "password" in user:
@@ -417,6 +420,15 @@ class WorkspaceUsers(object):
                 if not user.schildId in active_schild_ids:
                     former_users.append(user)
         return former_users
+
+
+# TODO: delete suspended and old users ...
+# now = datetime.now().astimezone()
+# now - datetime.fromisoformat(s.data['lastLoginTime']) > timedelta(days=360)
+
+# TODO:
+# - tidy up
+# method to move former students to "ehemelige"
 
 
 if __name__ == "__main__":
